@@ -1,12 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-@Project : IROS_20240302
-@File    : lgca.py
-@IDE     : PyCharm
-@Time    : 2024/3/10 09:42
-@Author  : mxb
-@Description : ***
-"""
 import math
 import torch
 
@@ -99,7 +91,7 @@ class TransformerBlock(torch.nn.Module):
         self.ffn_norm = torch.nn.LayerNorm(self.hidden_dim, eps=1e-6)
 
         self.attn = MultiHeadSelfAttention(hidden_dim=hidden_dim, num_heads=num_heads)
-        self.mlp_dim = self.hidden_dim * mlp_ratio  # 这里根据输入维度调整MLP中间层的维度，应该可以减小计算量
+        self.mlp_dim = self.hidden_dim * mlp_ratio
         self.ffn = Mlp(in_features=hidden_dim, mid_features=mlp_dim, out_features=hidden_dim)
 
     def forward(self, x):
@@ -188,7 +180,7 @@ class LGCA(torch.nn.Module):
         if self.is_adapool:
             x = self.adapool(x)
 
-        x = self.embedding(x)  # 变换到统一的维度
+        x = self.embedding(x)
         x = x.flatten(2)  # [B, C, H, W] --> [B, C, HW]
         x = x.transpose(2, 1)  # [B, C, HW] --> [B, HW, C]
 
@@ -198,7 +190,6 @@ class LGCA(torch.nn.Module):
 
         encoded = self.transformer_encoder(embedding)
 
-        # B, n_tokens, dim = encoded.shape
         x = encoded.permute([0, 2, 1])  # [B, HW, C] --> [B, C, HW]
         x = x.contiguous().view(B, C, self.input_size[0], self.input_size[1])
         g_context = torch.nn.functional.interpolate(x, size=(H, W), mode='bilinear')
@@ -206,8 +197,6 @@ class LGCA(torch.nn.Module):
         # generate global weight
         weight = self.weight(l_context)
         weight = self.active(weight)
-        # torch.set_printoptions(threshold=torch.inf)
-        # print(weight)
 
         out = l_context + g_context * weight
         if debug:

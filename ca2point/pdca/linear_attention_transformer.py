@@ -1,13 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-@Project : IROS_20240302
-@File    : lgca.py
-@IDE     : PyCharm
-@Time    : 2024/4/19 16:55
-@Author  : mxb
-@Description : LoFTR中的Transformer实现,
-               'Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention, PMLR 2020'
-"""
 import torch
 
 
@@ -67,9 +58,7 @@ class MultiHeadLinearAttention(torch.nn.Module):
 class LinearTransformerBlock(torch.nn.Module):
     def __init__(self,
                  hidden_dim=128,
-                 num_heads=8,
-                 mlp_dim=256,
-                 mlp_ratio=2.0):
+                 num_heads=8):
         super().__init__()
 
         self.linear_attn = MultiHeadLinearAttention(hidden_dim=hidden_dim, num_heads=num_heads)
@@ -106,8 +95,7 @@ class LinearTransformerEncoder(torch.nn.Module):
 
         self.blocks = torch.nn.ModuleList()
         for _ in range(num_layers):
-            block = LinearTransformerBlock(hidden_dim=attn_hidden_dim, num_heads=num_heads,
-                                           mlp_dim=mlp_dim, mlp_ratio=mlp_ratio)
+            block = LinearTransformerBlock(hidden_dim=attn_hidden_dim, num_heads=num_heads)
             self.blocks.append(block)
 
         self._init_weight()

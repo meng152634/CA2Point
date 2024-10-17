@@ -108,12 +108,8 @@ class CA2Point(torch.nn.Module):
             in_desc_dim=128,
             out_desc_dim=128,
             is_adapool=True,
-            attention_type="linear",  # 可以去掉
             num_layers=6,
             num_heads=8,
-            attn_hidden_dim=128,
-            mlp_dim=2048,
-            desc_weight_type="score",  # 可以去掉
         )
 
         # DEK

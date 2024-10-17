@@ -9,29 +9,13 @@ class KeypointEnhanceDescriptor(torch.nn.Module):
                  in_desc_dim=128,
                  out_desc_dim=128,
                  is_adapool=True,
-                 attention_type="full",  # 可以去掉
                  num_layers=12,
-                 num_heads=8,
-                 attn_hidden_dim=128,
-                 mlp_dim=2048,
-                 desc_weight_type="score"):  # 可以去掉
-        """
-
-        Args:
-            input_size [H, W]: 输入 heatmap 和 描述子 的size，用于生成x,y坐标
-            keypoint_dim:
-            descriptor_channels:
-            is_adapool:
-            num_layers:
-            num_heads:
-            attn_hidden_dim:
-            mlp_dim:
-        """
+                 num_heads=8):
         super().__init__()
 
         self.is_adapool = is_adapool
         self.out_dim = out_desc_dim
-        self.enhance_weight_type = desc_weight_type
+        self.enhance_weight_type = "score"
 
         if input_size is None:
             input_size = (3088, 3088)
@@ -73,19 +57,8 @@ class KeypointEnhanceDescriptor(torch.nn.Module):
 
         self.enhance_weight = torch.nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1)
 
-        # if attention_type == "full":
-        #     self.transformer_encoder = TransformerEncoder(num_layers=num_layers, num_heads=num_heads,
-        #                                                   attn_hidden_dim=attn_hidden_dim, mlp_dim=mlp_dim,
-        #                                                   mlp_ratio=4.0)
-        # elif attention_type == "linear":
         self.transformer_encoder = LinearTransformerEncoder(num_layers=num_layers, num_heads=num_heads)
-        # elif attention_type == "free":
-        #     self.transformer_encoder = AFTransformerEncoder(num_layers=num_layers, hidden_dim=attn_hidden_dim)
 
-        # 旧的描述子整合权重
-        # self.ori_desc_weight = torch.nn.Parameter(torch.FloatTensor(1), requires_grad=True)
-        # self.boost_desc_weight = torch.nn.Parameter(torch.FloatTensor(1), requires_grad=True)
-        # 新的描述子整合方式
         self.desc_fuse = torch.nn.Conv2d(in_channels=out_desc_dim * 2, out_channels=out_desc_dim,
                                          kernel_size=1, stride=1, padding=0)
 
@@ -97,9 +70,6 @@ class KeypointEnhanceDescriptor(torch.nn.Module):
 
         torch.nn.init.kaiming_normal_(self.enhance_weight.weight, mode="fan_out", nonlinearity="relu")
 
-        # self.ori_desc_weight.data.fill_(0.5)
-        # self.boost_desc_weight.data.fill_(0.5)
-
     def __init_weight(self, layer):
         for m in layer.modules():
             if isinstance(m, torch.nn.Conv2d):
@@ -108,18 +78,7 @@ class KeypointEnhanceDescriptor(torch.nn.Module):
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0)
 
-    def normalize_keypoints(kpts, image_shape):
-        # TODO: SuperGlue中的归一化方法
-        """ Normalize keypoints locations based on image image_shape"""
-        _, _, height, width = image_shape
-        one = kpts.new_tensor(1)
-        size = torch.stack([one*width, one*height])[None]
-        center = size / 2
-        scaling = size.max(1, keepdim=True).values * 0.7
-        return (kpts - center[:, None, :]) / scaling[:, None, :]
-
     def _normalize_keypoints_coordinate(self, x_coordinate, y_coordinate, image_shape):
-        # TODO: FeatureBooster中的归一化方法
         height, width = image_shape
         x0 = width / 2
         y0 = height / 2
@@ -152,19 +111,10 @@ class KeypointEnhanceDescriptor(torch.nn.Module):
         enh_descriptor = descriptor_encoded.permute([0, 2, 1]).contiguous().view(B, self.out_dim, 64, 64)  # [2*B, 128, 64, 64]
         enh_descriptor = torch.nn.functional.interpolate(enh_descriptor, size=(H, W), mode='bilinear')     # [2*B, 128, 400, 400]
 
-        # TODO: 这里加权可能需要两个weight map，而不是简单一个标量来加权
-        # 旧的
-        # out_descriptor = ori_descriptor * self.ori_desc_weight + enh_descriptor * self.boost_desc_weight
-        # 新的描述子整合方式
         out_descriptor = torch.cat([ori_descriptor, enh_descriptor], dim=1)
         out_descriptor = self.desc_fuse(out_descriptor)
 
-        if self.enhance_weight_type == "desc":  # 这个已经不用了
-            enhanced_weight = self.enhance_weight(out_descriptor)
-        elif self.enhance_weight_type == "score":   # 优先考虑这个，如果后面有时间测试 cat 方式
-            enhanced_weight = self.enhance_weight(score)
-        elif self.enhance_weight_type == "cat":
-            enhanced_weight = self.enhance_weight(torch.mean(torch.cat([keypoint_feat, score], dim=1), dim=1, keepdim=True))
+        enhanced_weight = self.enhance_weight(score)
 
         return out_descriptor, enhanced_weight
 
@@ -217,12 +167,6 @@ class DescriptorEnhanceKeypoint(torch.nn.Module):
                 torch.nn.init.constant_(m.bias, 0)
 
     def forward(self, score, keypoint_feat, descriptor):
-        """ 通过描述子的可匹配性增强关键点检测
-        Args:
-            score (torch.Tensor): [2*B, 1, 400, 400], 主网络检测到的关键点heatmap
-            keypoint_feat (torch.Tensor): [2*B, 128, 400, 400], score前一层的feature map
-            descriptor (torch.Tensor): [2*B, 128, 400, 400], 主网络生成coarse_descriptor
-        """
         ori_score = score
 
         matchability_map = self.desc_matchability(descriptor)
